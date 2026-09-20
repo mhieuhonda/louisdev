@@ -6,6 +6,10 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "bin": {
+    "louisdev": "./src/index.ts",
+    "ld": "./src/index.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test test/",
