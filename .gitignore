@@ -1,0 +1,19 @@
+node_modules/
+dist/
+build/
+*.local
+.env
+.env.*
+!.env.example
+# LouisDev credentials and keys - NEVER commit
+.credentials/
+*.pem
+*.key
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+# Test / coverage
+coverage/
+*.log

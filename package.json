@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "louisdev",
+  "description": "LouisDev - free-max AI coding CLI with multi-source rotation",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.2",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --cwd packages/cli src/index.ts",
+    "ui": "bun run --cwd packages/dashboard dev",
+    "typecheck": "bun turbo typecheck",
+    "lint": "biome check .",
+    "test": "bun test packages/",
+    "build": "bun build --compile packages/cli/src/index.ts --outfile dist/louisdev"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.2.0",
+    "typescript": "5.9.2"
+  }
+}
