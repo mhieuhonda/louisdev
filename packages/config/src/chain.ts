@@ -8,24 +8,42 @@ export const ChainSchema = z.object({
 export type Chain = z.infer<typeof ChainSchema>
 
 /**
- * Default chain shipped with LouisDev. Zero setup: the public-key source
- * works with no account and no key. Everything else is added by the user.
+ * Default chain shipped with LouisDev. Zero setup: the first source needs
+ * no account and no key. Everything else is added by the user.
+ *
+ * Note: the opencode zen endpoint was evaluated and rejected as a default
+ * source - its free tier is server-gated to genuine OpenCode clients
+ * (HTTP 403 FreeTierError for third parties, verified live). Keyless
+ * rotation starts at Pollinations instead.
  */
 export function defaultChain(): Chain {
   const sources: Source[] = [
     {
-      id: "zen-public",
-      label: "Zen Public (keyless)",
-      baseUrl: "https://opencode.ai/zen/v1",
-      protocol: "openai-responses",
-      auth: { type: "public", key: "public" },
-      // Company-run proxy with opaque limits: usable, but not "verified".
+      id: "pollinations-public",
+      label: "Pollinations Public (keyless)",
+      baseUrl: "https://text.pollinations.ai/openai",
+      protocol: "openai-chat",
+      auth: { type: "none" },
+      // Community-run public API with opaque limits: usable, warn once.
       trust: "community",
-      quota: { scope: "ip", reset: "daily-utc" },
-      models: ["muse-spark-1.3-contributor-free"],
-      catalogUrl: "https://models.opencode.ai/api.json",
+      quota: { scope: "ip", reset: "unknown" },
+      models: ["openai"],
       enabled: true,
       priority: 0,
+    },
+    {
+      id: "openrouter-free",
+      label: "OpenRouter Free Models (free key)",
+      baseUrl: "https://openrouter.ai/api/v1",
+      protocol: "openai-chat",
+      auth: { type: "env", var: "OPENROUTER_API_KEY" },
+      // Official public API with published docs and limits.
+      trust: "verified",
+      quota: { scope: "key", reset: "rolling" },
+      models: [],
+      catalogUrl: "https://openrouter.ai/api/v1/models",
+      enabled: true,
+      priority: 10,
     },
   ]
   return ChainSchema.parse({ sources })

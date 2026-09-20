@@ -41,10 +41,10 @@ describe("source", () => {
 })
 
 describe("chain", () => {
-  test("default chain is valid with zen-public first", () => {
+  test("default chain is valid with keyless source first", () => {
     const chain = defaultChain()
-    expect(ChainSchema.parse(chain).sources).toHaveLength(1)
-    expect(orderedSources(chain)[0]?.id).toBe("zen-public")
+    expect(ChainSchema.parse(chain).sources).toHaveLength(2)
+    expect(orderedSources(chain).map((s) => s.id)).toEqual(["pollinations-public", "openrouter-free"])
   })
 
   test("ordering is stable by priority, disabled skipped", () => {
@@ -82,7 +82,7 @@ describe("config", () => {
     const config = await loadConfig()
     expect(config.version).toBe(1)
     expect(config.theme).toBe("sunset-flow")
-    expect(config.chain.sources[0]?.id).toBe("zen-public")
+    expect(config.chain.sources[0]?.id).toBe("pollinations-public")
     expect(config.keys).toEqual({})
   })
 

@@ -31,7 +31,7 @@ async function collect(gen: AsyncGenerator<string>): Promise<string> {
 }
 
 describe("sender", () => {
-  test("public auth sends apiKey in body, streams chat deltas", async () => {
+  test("public auth sends bearer key, streams chat deltas", async () => {
     let seenBody: Record<string, unknown> = {}
     let seenAuth: string | null = "missing"
     server = Bun.serve({
@@ -52,9 +52,9 @@ describe("sender", () => {
       sendChat({ source, model: "free-model", messages: [{ role: "user", content: "hi" }] }),
     )
     expect(text).toBe("hello")
-    expect(seenBody["apiKey"]).toBe("public")
+    expect(seenBody["apiKey"]).toBeUndefined()
     expect(seenBody["model"]).toBe("free-model")
-    expect(seenAuth).toBeNull()
+    expect(seenAuth).toBe("Bearer public")
   })
 
   test("env auth sends bearer, responses protocol parses output deltas", async () => {

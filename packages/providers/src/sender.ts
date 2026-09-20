@@ -52,12 +52,16 @@ function headersFor(source: Source): Record<string, string> {
       )
     headers["Authorization"] = `Bearer ${key}`
   }
+  if (source.auth.type === "public") {
+    // Public-key flow: the key travels as a bearer token (server reads the
+    // Authorization header, never the body). "public" means anonymous.
+    headers["Authorization"] = `Bearer ${source.auth.key}`
+  }
   return headers
 }
 
 function bodyFor(source: Source, model: string, messages: ChatMessage[]): Record<string, unknown> {
   const body: Record<string, unknown> = { model, stream: true }
-  if (source.auth.type === "public") body["apiKey"] = source.auth.key
   if (source.protocol === "openai-chat") {
     body["messages"] = messages.map((m) => ({ role: m.role, content: m.content }))
   } else {
