@@ -17,6 +17,12 @@
     "packages/agent": {
       "name": "@louisdev/agent",
       "version": "0.0.1",
+      "dependencies": {
+        "@louisdev/config": "workspace:*",
+        "@louisdev/providers": "workspace:*",
+        "@louisdev/quota": "workspace:*",
+        "zod": "^4.6.5",
+      },
     },
     "packages/cli": {
       "name": "@louisdev/cli",

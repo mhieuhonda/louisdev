@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import type { Source } from "@louisdev/config"
-import { ProviderRequestError, sendChat } from "../src/sender.ts"
+import { ProviderRequestError, sendChat, type StreamEvent } from "../src/sender.ts"
 
 let server: ReturnType<typeof Bun.serve> | undefined
 afterEach(() => {
@@ -24,10 +24,14 @@ function baseSource(overrides: Partial<Source> = {}): Source {
   }
 }
 
-async function collect(gen: AsyncGenerator<string>): Promise<string> {
+async function collect(gen: AsyncGenerator<StreamEvent>): Promise<{ text: string; toolcalls: StreamEvent[] }> {
   let text = ""
-  for await (const delta of gen) text += delta
-  return text
+  const toolcalls: StreamEvent[] = []
+  for await (const event of gen) {
+    if (event.type === "text") text += event.delta
+    else toolcalls.push(event)
+  }
+  return { text, toolcalls }
 }
 
 describe("sender", () => {
@@ -48,7 +52,7 @@ describe("sender", () => {
       },
     })
     const source = baseSource({ baseUrl: `http://127.0.0.1:${server.port}` })
-    const text = await collect(
+    const { text } = await collect(
       sendChat({ source, model: "free-model", messages: [{ role: "user", content: "hi" }] }),
     )
     expect(text).toBe("hello")
@@ -77,7 +81,7 @@ describe("sender", () => {
         protocol: "openai-responses",
         auth: { type: "env", var: "LOUISDEV_TEST_KEY" },
       })
-      const text = await collect(
+      const { text } = await collect(
         sendChat({ source, model: "m", messages: [{ role: "user", content: "hi" }] }),
       )
       expect(text).toBe("yo")
@@ -110,6 +114,23 @@ describe("sender", () => {
     await expect(collect(sendChat({ source, model: "m", messages: [] }))).rejects.toThrow(
       "LOUISDEV_DEFINITELY_MISSING",
     )
+  })
+
+  test("tool calls stream in chunks, arrive whole", async () => {
+    server = Bun.serve({
+      port: 0,
+      fetch() {
+        return new Response(
+          'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"read","arguments":"{\\"pa"}}]}}]}\n\n' +
+            'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"th\\":\\"a.txt\\"}"}}]}}]}\n\ndata: [DONE]\n\n',
+          { headers: { "Content-Type": "text/event-stream" } },
+        )
+      },
+    })
+    const source = baseSource({ baseUrl: `http://127.0.0.1:${server.port}` })
+    const { text, toolcalls } = await collect(sendChat({ source, model: "m", messages: [] }))
+    expect(text).toBe("")
+    expect(toolcalls).toEqual([{ type: "toolcall", id: "call_1", name: "read", args: '{"path":"a.txt"}' }])
   })
 
   test("unsupported protocol is explicit", async () => {

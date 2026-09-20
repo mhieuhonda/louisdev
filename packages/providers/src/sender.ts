@@ -22,10 +22,22 @@ export class ProviderRequestError extends Error {
 
 const USER_AGENT = "louisdev/0.0.1 (+https://github.com/mhieuhonda/louisdev)"
 
+export interface ToolSpec {
+  name: string
+  description: string
+  parameters: Record<string, unknown>
+}
+
+export type StreamEvent =
+  | { type: "text"; delta: string }
+  | { type: "toolcall"; id: string; name: string; args: string }
+
 export interface SendOptions {
   source: Source
   model: string
   messages: ChatMessage[]
+  /** Advertised on openai-chat only. Other protocols ignore tools for now. */
+  tools?: ToolSpec[]
   signal?: AbortSignal
   fetchImpl?: typeof fetch
 }
@@ -60,10 +72,16 @@ function headersFor(source: Source): Record<string, string> {
   return headers
 }
 
-function bodyFor(source: Source, model: string, messages: ChatMessage[]): Record<string, unknown> {
+function bodyFor(source: Source, model: string, messages: ChatMessage[], tools?: ToolSpec[]): Record<string, unknown> {
   const body: Record<string, unknown> = { model, stream: true }
   if (source.protocol === "openai-chat") {
     body["messages"] = messages.map((m) => ({ role: m.role, content: m.content }))
+    if (tools && tools.length > 0) {
+      body["tools"] = tools.map((tool) => ({
+        type: "function",
+        function: { name: tool.name, description: tool.description, parameters: tool.parameters },
+      }))
+    }
   } else {
     body["input"] = messages.map((m) => ({ role: m.role, content: m.content }))
   }
@@ -93,11 +111,44 @@ function responsesDelta(payload: unknown): string | undefined {
   return undefined
 }
 
+interface PendingToolCall {
+  id: string
+  name: string
+  args: string
+}
+
+/** Accumulate streaming tool_call chunks (openai-chat). Returns new arrivals. */
+function accumulateToolCalls(payload: unknown, pending: Map<number, PendingToolCall>): void {
+  if (!isRecord(payload)) return
+  const choices = payload["choices"]
+  if (!Array.isArray(choices)) return
+  const first = choices[0]
+  if (!isRecord(first)) return
+  const delta = first["delta"]
+  if (!isRecord(delta)) return
+  const calls = delta["tool_calls"]
+  if (!Array.isArray(calls)) return
+  for (const call of calls) {
+    if (!isRecord(call)) continue
+    const index = typeof call["index"] === "number" ? call["index"] : 0
+    const current = pending.get(index) ?? { id: "", name: "", args: "" }
+    if (typeof call["id"] === "string" && call["id"] !== "") current.id = call["id"]
+    const fn = call["function"]
+    if (isRecord(fn)) {
+      if (typeof fn["name"] === "string" && fn["name"] !== "") current.name = fn["name"]
+      if (typeof fn["arguments"] === "string") current.args += fn["arguments"]
+    }
+    pending.set(index, current)
+  }
+}
+
 /**
- * Stream one chat completion. Yields text deltas, throws ProviderRequestError
+ * Stream one chat completion. Yields text deltas live; complete tool calls
+ * are yielded whole at the end of the stream. Throws ProviderRequestError
  * carrying status/headers/body so the quota layer can classify the refusal.
+ * Tool calls are only parsed for openai-chat.
  */
-export async function* sendChat(options: SendOptions): AsyncGenerator<string> {
+export async function* sendChat(options: SendOptions): AsyncGenerator<StreamEvent> {
   const fetchImpl = options.fetchImpl ?? fetch
   const url = endpointFor(options.source)
   let response: Response
@@ -105,7 +156,7 @@ export async function* sendChat(options: SendOptions): AsyncGenerator<string> {
     response = await fetchImpl(url, {
       method: "POST",
       headers: headersFor(options.source),
-      body: JSON.stringify(bodyFor(options.source, options.model, options.messages)),
+      body: JSON.stringify(bodyFor(options.source, options.model, options.messages, options.tools)),
       signal: options.signal,
     })
   } catch (error) {
@@ -133,12 +184,26 @@ export async function* sendChat(options: SendOptions): AsyncGenerator<string> {
   const parser = new SSEParser()
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
-  const extract = options.source.protocol === "openai-chat" ? chatDelta : responsesDelta
+  const isChat = options.source.protocol === "openai-chat"
+  const extract = isChat ? chatDelta : responsesDelta
+  const pending = new Map<number, PendingToolCall>()
+  const flushToolCalls = function* (): Generator<StreamEvent> {
+    for (const call of [...pending.values()].toSorted((a, b) => a.id.localeCompare(b.id))) {
+      if (call.name !== "") yield { type: "toolcall", id: call.id, name: call.name, args: call.args }
+    }
+    pending.clear()
+  }
   for (;;) {
     const { done, value } = await reader.read()
-    if (done) return
+    if (done) {
+      yield* flushToolCalls()
+      return
+    }
     for (const event of parser.feed(decoder.decode(value, { stream: true }))) {
-      if (parser.isDone(event.data)) return
+      if (parser.isDone(event.data)) {
+        yield* flushToolCalls()
+        return
+      }
       if (!event.data) continue
       let payload: unknown
       try {
@@ -146,8 +211,9 @@ export async function* sendChat(options: SendOptions): AsyncGenerator<string> {
       } catch {
         continue
       }
+      if (isChat) accumulateToolCalls(payload, pending)
       const delta = extract(payload)
-      if (delta) yield delta
+      if (delta) yield { type: "text", delta }
     }
   }
 }
