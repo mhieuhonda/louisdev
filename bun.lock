@@ -40,6 +40,9 @@
     "packages/quota": {
       "name": "@louisdev/quota",
       "version": "0.0.1",
+      "dependencies": {
+        "@louisdev/config": "workspace:*",
+      },
     },
     "packages/tui": {
       "name": "@louisdev/tui",
