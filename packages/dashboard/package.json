@@ -7,6 +7,16 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test test/",
+    "dev": "bun src/serve.ts"
+  },
+  "dependencies": {
+    "@louisdev/agent": "workspace:*",
+    "@louisdev/cli": "workspace:*",
+    "@louisdev/config": "workspace:*",
+    "@louisdev/quota": "workspace:*",
+    "@louisdev/tui": "workspace:*",
+    "hono": "^4.13.8"
   }
 }
