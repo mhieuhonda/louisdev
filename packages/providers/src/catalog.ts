@@ -50,18 +50,18 @@ export function parseCatalog(raw: Record<string, unknown>): CatalogModel[] {
   const out: CatalogModel[] = []
   for (const [provider, info] of Object.entries(raw)) {
     if (!isRecord(info)) continue
-    const models = info["models"]
+    const models = info.models
     if (!isRecord(models)) continue
     for (const [id, entry] of Object.entries(models)) {
       if (!isRecord(entry)) continue
-      const cost = isRecord(entry["cost"]) ? entry["cost"] : {}
-      const limit = isRecord(entry["limit"]) ? entry["limit"] : {}
+      const cost = isRecord(entry.cost) ? entry.cost : {}
+      const limit = isRecord(entry.limit) ? entry.limit : {}
       out.push({
         provider,
         id,
-        cost: { input: num(cost["input"]) ?? -1, output: num(cost["output"]) ?? -1 },
-        contextLimit: num(limit["context"]),
-        outputLimit: num(limit["output"]),
+        cost: { input: num(cost.input) ?? -1, output: num(cost.output) ?? -1 },
+        contextLimit: num(limit.context),
+        outputLimit: num(limit.output),
       })
     }
   }

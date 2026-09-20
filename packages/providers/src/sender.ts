@@ -62,28 +62,33 @@ function headersFor(source: Source): Record<string, string> {
       throw new ProviderRequestError(
         `missing secret: env ${source.auth.var} is not set (source ${source.id})`,
       )
-    headers["Authorization"] = `Bearer ${key}`
+    headers.Authorization = `Bearer ${key}`
   }
   if (source.auth.type === "public") {
     // Public-key flow: the key travels as a bearer token (server reads the
     // Authorization header, never the body). "public" means anonymous.
-    headers["Authorization"] = `Bearer ${source.auth.key}`
+    headers.Authorization = `Bearer ${source.auth.key}`
   }
   return headers
 }
 
-function bodyFor(source: Source, model: string, messages: ChatMessage[], tools?: ToolSpec[]): Record<string, unknown> {
+function bodyFor(
+  source: Source,
+  model: string,
+  messages: ChatMessage[],
+  tools?: ToolSpec[],
+): Record<string, unknown> {
   const body: Record<string, unknown> = { model, stream: true }
   if (source.protocol === "openai-chat") {
-    body["messages"] = messages.map((m) => ({ role: m.role, content: m.content }))
+    body.messages = messages.map((m) => ({ role: m.role, content: m.content }))
     if (tools && tools.length > 0) {
-      body["tools"] = tools.map((tool) => ({
+      body.tools = tools.map((tool) => ({
         type: "function",
         function: { name: tool.name, description: tool.description, parameters: tool.parameters },
       }))
     }
   } else {
-    body["input"] = messages.map((m) => ({ role: m.role, content: m.content }))
+    body.input = messages.map((m) => ({ role: m.role, content: m.content }))
   }
   return body
 }
@@ -94,19 +99,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function chatDelta(payload: unknown): string | undefined {
   if (!isRecord(payload)) return undefined
-  const choices = payload["choices"]
+  const choices = payload.choices
   if (!Array.isArray(choices)) return undefined
   const first = choices[0]
   if (!isRecord(first)) return undefined
-  const delta = first["delta"]
+  const delta = first.delta
   if (!isRecord(delta)) return undefined
-  return typeof delta["content"] === "string" ? delta["content"] : undefined
+  return typeof delta.content === "string" ? delta.content : undefined
 }
 
 function responsesDelta(payload: unknown): string | undefined {
   if (!isRecord(payload)) return undefined
-  if (payload["type"] === "response.output_text.delta" && typeof payload["delta"] === "string") {
-    return payload["delta"]
+  if (payload.type === "response.output_text.delta" && typeof payload.delta === "string") {
+    return payload.delta
   }
   return undefined
 }
@@ -120,23 +125,23 @@ interface PendingToolCall {
 /** Accumulate streaming tool_call chunks (openai-chat). Returns new arrivals. */
 function accumulateToolCalls(payload: unknown, pending: Map<number, PendingToolCall>): void {
   if (!isRecord(payload)) return
-  const choices = payload["choices"]
+  const choices = payload.choices
   if (!Array.isArray(choices)) return
   const first = choices[0]
   if (!isRecord(first)) return
-  const delta = first["delta"]
+  const delta = first.delta
   if (!isRecord(delta)) return
-  const calls = delta["tool_calls"]
+  const calls = delta.tool_calls
   if (!Array.isArray(calls)) return
   for (const call of calls) {
     if (!isRecord(call)) continue
-    const index = typeof call["index"] === "number" ? call["index"] : 0
+    const index = typeof call.index === "number" ? call.index : 0
     const current = pending.get(index) ?? { id: "", name: "", args: "" }
-    if (typeof call["id"] === "string" && call["id"] !== "") current.id = call["id"]
-    const fn = call["function"]
+    if (typeof call.id === "string" && call.id !== "") current.id = call.id
+    const fn = call.function
     if (isRecord(fn)) {
-      if (typeof fn["name"] === "string" && fn["name"] !== "") current.name = fn["name"]
-      if (typeof fn["arguments"] === "string") current.args += fn["arguments"]
+      if (typeof fn.name === "string" && fn.name !== "") current.name = fn.name
+      if (typeof fn.arguments === "string") current.args += fn.arguments
     }
     pending.set(index, current)
   }

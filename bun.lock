@@ -27,6 +27,12 @@
     "packages/cli": {
       "name": "@louisdev/cli",
       "version": "0.0.1",
+      "dependencies": {
+        "@louisdev/agent": "workspace:*",
+        "@louisdev/config": "workspace:*",
+        "@louisdev/quota": "workspace:*",
+        "@louisdev/tui": "workspace:*",
+      },
     },
     "packages/config": {
       "name": "@louisdev/config",

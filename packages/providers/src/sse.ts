@@ -17,8 +17,9 @@ export class SSEParser {
   feed(chunk: string): ServerSentEvent[] {
     this.buffer += chunk
     const out: ServerSentEvent[] = []
-    let index: number
-    while ((index = this.buffer.indexOf("\n")) >= 0) {
+    for (;;) {
+      const index = this.buffer.indexOf("\n")
+      if (index < 0) break
       const line = this.buffer.slice(0, index).replace(/\r$/, "")
       this.buffer = this.buffer.slice(index + 1)
       if (line === "") {

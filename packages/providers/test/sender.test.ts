@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import type { Source } from "@louisdev/config"
-import { ProviderRequestError, sendChat, type StreamEvent } from "../src/sender.ts"
+import { ProviderRequestError, type StreamEvent, sendChat } from "../src/sender.ts"
 
 let server: ReturnType<typeof Bun.serve> | undefined
 afterEach(() => {
@@ -24,7 +24,9 @@ function baseSource(overrides: Partial<Source> = {}): Source {
   }
 }
 
-async function collect(gen: AsyncGenerator<StreamEvent>): Promise<{ text: string; toolcalls: StreamEvent[] }> {
+async function collect(
+  gen: AsyncGenerator<StreamEvent>,
+): Promise<{ text: string; toolcalls: StreamEvent[] }> {
   let text = ""
   const toolcalls: StreamEvent[] = []
   for await (const event of gen) {
@@ -56,8 +58,8 @@ describe("sender", () => {
       sendChat({ source, model: "free-model", messages: [{ role: "user", content: "hi" }] }),
     )
     expect(text).toBe("hello")
-    expect(seenBody["apiKey"]).toBeUndefined()
-    expect(seenBody["model"]).toBe("free-model")
+    expect(seenBody.apiKey).toBeUndefined()
+    expect(seenBody.model).toBe("free-model")
     expect(seenAuth).toBe("Bearer public")
   })
 
