@@ -56,6 +56,10 @@
     "packages/tui": {
       "name": "@louisdev/tui",
       "version": "0.0.1",
+      "dependencies": {
+        "@louisdev/config": "workspace:*",
+        "@louisdev/quota": "workspace:*",
+      },
     },
   },
   "packages": {
