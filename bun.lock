@@ -36,6 +36,9 @@
     "packages/providers": {
       "name": "@louisdev/providers",
       "version": "0.0.1",
+      "dependencies": {
+        "@louisdev/config": "workspace:*",
+      },
     },
     "packages/quota": {
       "name": "@louisdev/quota",
