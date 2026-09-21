@@ -15,16 +15,17 @@ export interface ParsedArgs {
 const HELP = `louisdev ${VERSION} - free-max coding CLI
 
 Usage:
-  louisdev chat <message> [--session <id>] [--new] [--auto-approve]
-  louisdev quota
-  louisdev chain
-  louisdev sessions
+  louisdev                       chat right here in the terminal (interactive)
+  louisdev chat <message>        one-shot: send a message, stream the answer
+  louisdev quota                 live quota board
+  louisdev chain                 source chain by priority
+  louisdev sessions              saved sessions
   louisdev help | version
 
-Options:
-  --session <id>   resume a session (chat)
-  --new            always start a fresh session (chat)
-  --auto-approve   allow bash/edit without asking (chat)
+Chat options:
+  --session <id>   resume a session
+  --new            always start a fresh session
+  --auto-approve   allow bash/edit without asking
   --config <path>  config file path
   --theme <name>   theme name
 
@@ -46,7 +47,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let autoApprove = false
   let configPath: string | undefined
   let theme: string | undefined
-  let command: Command = "help"
+  let command: Command = "chat"
   let seenCommand = false
 
   const takeValue = (index: number, flag: string): string => {

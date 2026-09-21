@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { PassThrough } from "node:stream"
 import { type RunContext, run } from "../src/commands.ts"
 
 function ctx(
@@ -34,7 +35,7 @@ describe("commands", () => {
     expect(await run(["version"], v)).toBe(0)
     expect(v.outText()).toContain("louisdev 0.0.1")
     const h = ctx()
-    expect(await run([], h)).toBe(0)
+    expect(await run(["help"], h)).toBe(0)
     expect(h.outText()).toContain("louisdev chat")
   })
 
@@ -66,9 +67,30 @@ describe("commands", () => {
     expect(list.outText()).toContain("ses_")
   })
 
-  test("chat without message fails usage", async () => {
-    const c = ctx()
-    expect(await run(["chat"], c)).toBe(2)
+  test("chat without message opens interactive, exits on closed stdin", async () => {
+    const closed = new PassThrough()
+    closed.end()
+    const c = ctx({ stdin: closed as unknown as NodeJS.ReadStream })
+    expect(await run(["chat"], c)).toBe(0)
+    expect(c.outText()).toContain("free-max coding CLI")
+    expect(c.outText()).toContain("bye")
+  })
+
+  test("interactive chat runs a turn and leaves on /exit", async () => {
+    const sse = 'data: {"choices":[{"delta":{"content":"chat reply"}}]}\n\ndata: [DONE]\n\n'
+    const script = new PassThrough()
+    const c = ctx({ fetchImpl: stubFetch(sse), stdin: script as unknown as NodeJS.ReadStream })
+    script.write("hello there\n")
+    const done = run(["chat"], c).then((code) => {
+      expect(code).toBe(0)
+      expect(c.outText()).toContain("chat reply")
+      expect(c.outText()).toContain("bye")
+      return true
+    })
+    // Wait for the turn to finish, then exit while the next prompt is open.
+    for (let i = 0; i < 100 && !c.errText().includes("1 request(s)"); i += 1) await Bun.sleep(20)
+    script.write("/exit\n")
+    expect(await done).toBe(true)
   })
 
   test("unknown command exits 2", async () => {

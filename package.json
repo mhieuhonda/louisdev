@@ -10,7 +10,6 @@
   ],
   "scripts": {
     "dev": "bun run --cwd packages/cli src/index.ts",
-    "ui": "bun run --cwd packages/dashboard dev",
     "typecheck": "bun turbo typecheck",
     "lint": "biome check .",
     "test": "bun test packages/",

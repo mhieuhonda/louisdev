@@ -1,11 +1,12 @@
 import { existsSync, mkdirSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
-import { runTurn, SessionStore } from "@louisdev/agent"
+import { runTurn, SessionStore, toHistory } from "@louisdev/agent"
 import { type LouisDevConfig, loadConfig, orderedSources, type Theme, type TrustTier } from "@louisdev/config"
 import { QuotaManager, SqueezeReport } from "@louisdev/quota"
 import { loadTheme, renderLogo, renderQuotaBoard, style } from "@louisdev/tui"
 import { helpText, type ParsedArgs, parseArgs, VERSION } from "./args.ts"
+import { runInteractive } from "./interactive.ts"
 
 export interface RunContext {
   out: (text: string) => void
@@ -13,6 +14,7 @@ export interface RunContext {
   fetchImpl?: typeof fetch
   sessionDb?: string
   workdir?: string
+  stdin?: NodeJS.ReadStream
 }
 
 function sessionDbPath(override?: string): string {
@@ -89,8 +91,20 @@ export async function run(argv: string[], ctx: RunContext): Promise<number> {
 
   const message = parsed.positional.join(" ").trim()
   if (message === "") {
-    ctx.err("chat needs a message\n")
-    return 2
+    // No message: open the interactive chat right in the terminal.
+    return runInteractive({
+      config,
+      theme,
+      out: ctx.out,
+      err: ctx.err,
+      fetchImpl: ctx.fetchImpl,
+      sessionDb: ctx.sessionDb,
+      workdir: ctx.workdir,
+      session: parsed.session,
+      fresh: parsed.fresh,
+      autoApprove: parsed.autoApprove,
+      stdin: ctx.stdin,
+    })
   }
   const db = sessionDbPath(ctx.sessionDb)
   ensureParentDir(db)
@@ -117,6 +131,7 @@ export async function run(argv: string[], ctx: RunContext): Promise<number> {
       store,
       sessionId,
       input: message,
+      history: toHistory(store.get(sessionId)?.messages ?? []),
       toolCtx: { workdir: ctx.workdir ?? process.cwd(), autoApprove: parsed.autoApprove },
       fetchImpl: ctx.fetchImpl,
       seenTrust,

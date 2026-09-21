@@ -28,6 +28,8 @@ export interface RunOptions {
   input: string
   toolCtx: ToolContext
   tools?: ToolDefinition[]
+  /** Prior conversation turns (from the session store) sent as context. */
+  history?: ChatMessage[]
   maxSteps?: number
   requestTimeoutMs?: number
   fetchImpl?: typeof fetch
@@ -40,6 +42,18 @@ export interface RunResult {
   text: string
   steps: number
   sourcesUsed: string[]
+}
+
+/**
+ * Convert stored session messages into API history. Stored tool results
+ * become user messages (tool role carries provider-specific semantics we
+ * do not model); caps to the newest `limit` messages to bound requests.
+ */
+export function toHistory(rows: { role: string; content: string }[], limit = 30): ChatMessage[] {
+  return rows
+    .slice(-limit)
+    .filter((row) => row.content.trim() !== "")
+    .map((row) => ({ role: row.role === "assistant" ? "assistant" : "user", content: row.content }))
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -76,7 +90,8 @@ export async function runTurn(options: RunOptions): Promise<RunResult> {
   let steps = 0
   let lastText = ""
 
-  const messages: ChatMessage[] = [{ role: "user", content: options.input }]
+  const history = options.history ?? []
+  const messages: ChatMessage[] = [...history, { role: "user", content: options.input }]
   options.store.append(options.sessionId, "user", options.input)
 
   for (;;) {

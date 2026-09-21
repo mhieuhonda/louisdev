@@ -37,7 +37,7 @@ export function formatWait(ms: number): string {
   return `${Math.floor(hr / 24)}d${String(hr % 24).padStart(2, "0")}h`
 }
 
-/** One-line status for a source, for logs and the dashboard. */
+/** One-line status for a source, for logs and the quota board. */
 export function formatSourceLine(theme: Theme, view: SourceView): string {
   const state =
     view.status === "ok"

@@ -10,8 +10,8 @@ describe("args", () => {
     expect(parsed.autoApprove).toBe(true)
   })
 
-  test("defaults to help, understands version aliases", () => {
-    expect(parseArgs([]).command).toBe("help")
+  test("defaults to interactive chat, understands version aliases", () => {
+    expect(parseArgs([]).command).toBe("chat")
     expect(parseArgs(["-v"]).command).toBe("version")
     expect(parseArgs(["--help"]).command).toBe("help")
   })

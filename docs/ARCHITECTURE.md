@@ -23,7 +23,6 @@ user prompt
   model picker
 - `tui`: sunset-flow theme, gradient logo, chat, quota board
 - `config`: zod schemas for chain, keys, theme (env/flag overrides)
-- `dashboard` (phase 2): chat + quota board + chain editor
 - `cli`: binary wiring only, no business logic
 
 ## Decisions
