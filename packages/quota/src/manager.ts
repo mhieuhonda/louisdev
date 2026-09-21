@@ -40,8 +40,17 @@ export class QuotaManager {
     return state
   }
 
-  /** First usable source by priority, or undefined when all are parked. */
-  pick(now: number = Date.now()): Source | undefined {
+  /**
+   * First usable source by priority, or undefined when all are parked.
+   * With `preferred`, the pinned source is used while it is ok; once it
+   * cools, rotation falls back to the rest of the chain (visible via the
+   * source-change announce).
+   */
+  pick(now: number = Date.now(), preferred?: string): Source | undefined {
+    if (preferred) {
+      const pinned = this.sources.find((source) => source.id === preferred)
+      if (pinned && statusAt(this.stateOf(pinned.id), now) === "ok") return pinned
+    }
     return this.sources.find((source) => statusAt(this.stateOf(source.id), now) === "ok")
   }
 

@@ -27,9 +27,14 @@
     "packages/cli": {
       "name": "@louisdev/cli",
       "version": "0.0.1",
+      "bin": {
+        "louisdev": "./src/index.ts",
+        "ld": "./src/index.ts",
+      },
       "dependencies": {
         "@louisdev/agent": "workspace:*",
         "@louisdev/config": "workspace:*",
+        "@louisdev/providers": "workspace:*",
         "@louisdev/quota": "workspace:*",
         "@louisdev/tui": "workspace:*",
       },

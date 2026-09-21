@@ -30,6 +30,7 @@ export interface ToolSpec {
 
 export type StreamEvent =
   | { type: "text"; delta: string }
+  | { type: "thinking"; delta: string }
   | { type: "toolcall"; id: string; name: string; args: string }
 
 export interface SendOptions {
@@ -38,6 +39,8 @@ export interface SendOptions {
   messages: ChatMessage[]
   /** Advertised on openai-chat only. Other protocols ignore tools for now. */
   tools?: ToolSpec[]
+  /** Reasoning effort for reasoning models, e.g. "low" (from the source). */
+  reasoningEffort?: string
   signal?: AbortSignal
   fetchImpl?: typeof fetch
 }
@@ -77,10 +80,14 @@ function bodyFor(
   model: string,
   messages: ChatMessage[],
   tools?: ToolSpec[],
+  reasoningEffort?: string,
 ): Record<string, unknown> {
   const body: Record<string, unknown> = { model, stream: true }
   if (source.protocol === "openai-chat") {
     body.messages = messages.map((m) => ({ role: m.role, content: m.content }))
+    // Low reasoning effort by default: reasoning models otherwise think 9x
+    // longer before the first content token. Override via config.
+    if (reasoningEffort) body.reasoning_effort = reasoningEffort
     if (tools && tools.length > 0) {
       body.tools = tools.map((tool) => ({
         type: "function",
@@ -106,6 +113,18 @@ function chatDelta(payload: unknown): string | undefined {
   const delta = first.delta
   if (!isRecord(delta)) return undefined
   return typeof delta.content === "string" ? delta.content : undefined
+}
+
+/** Reasoning summaries stream before content (gpt-oss and friends). */
+function chatThinking(payload: unknown): string | undefined {
+  if (!isRecord(payload)) return undefined
+  const choices = payload.choices
+  if (!Array.isArray(choices)) return undefined
+  const first = choices[0]
+  if (!isRecord(first)) return undefined
+  const delta = first.delta
+  if (!isRecord(delta)) return undefined
+  return typeof delta.reasoning === "string" && delta.reasoning !== "" ? delta.reasoning : undefined
 }
 
 function responsesDelta(payload: unknown): string | undefined {
@@ -161,7 +180,9 @@ export async function* sendChat(options: SendOptions): AsyncGenerator<StreamEven
     response = await fetchImpl(url, {
       method: "POST",
       headers: headersFor(options.source),
-      body: JSON.stringify(bodyFor(options.source, options.model, options.messages, options.tools)),
+      body: JSON.stringify(
+        bodyFor(options.source, options.model, options.messages, options.tools, options.reasoningEffort),
+      ),
       signal: options.signal,
     })
   } catch (error) {
@@ -217,6 +238,8 @@ export async function* sendChat(options: SendOptions): AsyncGenerator<StreamEven
         continue
       }
       if (isChat) accumulateToolCalls(payload, pending)
+      const thinking = isChat ? chatThinking(payload) : undefined
+      if (thinking) yield { type: "thinking", delta: thinking }
       const delta = extract(payload)
       if (delta) yield { type: "text", delta }
     }

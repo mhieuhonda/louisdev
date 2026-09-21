@@ -4,9 +4,10 @@ import { join } from "node:path"
 import { createInterface } from "node:readline/promises"
 import tty from "node:tty"
 import { runTurn, SessionStore, toHistory } from "@louisdev/agent"
-import type { LouisDevConfig, Theme, TrustTier } from "@louisdev/config"
+import { type LouisDevConfig, saveKey, type Theme, type TrustTier } from "@louisdev/config"
 import { QuotaManager, SqueezeReport } from "@louisdev/quota"
 import { renderLogo, renderQuotaBoard, style } from "@louisdev/tui"
+import { entryReady, listModelEntries, parseSelection } from "./models.ts"
 
 export interface InteractiveInput {
   config: LouisDevConfig
@@ -25,6 +26,8 @@ export interface InteractiveInput {
 
 const SLASH_HELP = `commands:
   /new           start a fresh session
+  /models        pick a model (keyless providers first, keys auto-saved)
+  /thinking      toggle the thinking stream (on/off)
   /quota         show the quota board
   /sessions      list saved sessions
   /help          this text
@@ -50,6 +53,73 @@ function dbPath(override?: string): string {
   return join(homedir(), ".local", "share", "louisdev", "sessions.db")
 }
 
+/**
+ * Event printer shared by the interactive and one-shot chat. Streams thinking
+ * dimmed (gpt-oss reasons before answering - showing it live kills the blank
+ * wait), answers normal, and keeps everything else quiet.
+ */
+export function chatPrinter(
+  out: (t: string) => void,
+  err: (t: string) => void,
+  ui: ReturnType<typeof style>,
+) {
+  let inThinking = false
+  let lastSource: string | undefined
+  return {
+    /** Set by /thinking - when false, reasoning deltas are dropped. */
+    showThinking: true,
+    handle(event: {
+      type: string
+      delta?: string
+      sourceId?: string
+      model?: string
+      name?: string
+      output?: string
+      waitMs?: number
+      reason?: string
+      message?: string
+    }) {
+      if (event.type === "thinking") {
+        if (!this.showThinking) return
+        if (!inThinking) {
+          inThinking = true
+          out(`${ui.dim("… thinking")}`)
+        }
+        out(ui.dim(event.delta ?? ""))
+        return
+      }
+      if (event.type === "text") {
+        if (inThinking) {
+          inThinking = false
+          out("\n\n")
+        }
+        out(event.delta ?? "")
+        return
+      }
+      if (event.type === "source") {
+        // Only announce source changes: stable picks stay silent.
+        if (event.sourceId !== lastSource) {
+          lastSource = event.sourceId
+          err(`\n${ui.muted(`~ ${event.sourceId} / ${event.model}`)}\n`)
+        }
+        return
+      }
+      if (event.type === "tool-start") {
+        if (inThinking) {
+          inThinking = false
+          out("\n\n")
+        }
+        err(`${ui.primary(`$ ${event.name}`)}\n`)
+        return
+      }
+      if (event.type === "tool-end") err(`${ui.muted((event.output ?? "").slice(0, 500))}\n`)
+      else if (event.type === "waiting")
+        err(`${ui.muted(`… waiting ${Math.ceil((event.waitMs ?? 0) / 1000)}s (${event.reason})`)}\n`)
+      else if (event.type === "warning") err(`${ui.error(`! ${event.message}`)}\n`)
+    },
+  }
+}
+
 export async function runInteractive(input: InteractiveInput): Promise<number> {
   // Open stdin first: may throw a clean error before any side effects.
   const stdin = input.stdin ?? openStdin()
@@ -70,11 +140,11 @@ export async function runInteractive(input: InteractiveInput): Promise<number> {
   const manager = new QuotaManager(input.config.chain)
   const report = new SqueezeReport()
   const seenTrust = new Set<TrustTier>()
+  const printer = chatPrinter(input.out, input.err, ui)
+  let preferred: { sourceId: string; model: string } | undefined
 
   input.out(`${renderLogo(input.theme)}\n\n`)
-  input.err(
-    `${ui.muted(`session ${sessionId} · type a message, /help for commands, ctrl+c twice to exit`)}\n\n`,
-  )
+  input.err(`${ui.muted("· /help commands · ctrl+c twice exits")}\n\n`)
 
   const rl = createInterface({ input: stdin, output: process.stderr })
   let running: AbortController | undefined
@@ -118,6 +188,11 @@ export async function runInteractive(input: InteractiveInput): Promise<number> {
       input.out(`${SLASH_HELP}`)
       continue
     }
+    if (line === "/thinking") {
+      printer.showThinking = !printer.showThinking
+      input.err(`${ui.muted(`thinking ${printer.showThinking ? "on" : "off"}`)}\n\n`)
+      continue
+    }
     if (line === "/quota") {
       input.out(`${renderQuotaBoard(input.theme, manager.snapshot())}\n\n`)
       continue
@@ -136,6 +211,56 @@ export async function runInteractive(input: InteractiveInput): Promise<number> {
       input.err(`${ui.muted(`new session ${sessionId}`)}\n\n`)
       continue
     }
+    if (line === "/models") {
+      const entries = await listModelEntries(input.config.chain)
+      input.out(
+        `${entries
+          .map(
+            (entry, index) =>
+              `  ${index + 1}. ${entry.sourceLabel} — ${entry.model}${
+                entry.needsKey && !entryReady(entry) ? `  ${ui.error(`(needs ${entry.keyVar})`)}` : ""
+              }`,
+          )
+          .join("\n")}\n\n`,
+      )
+      let selectionText: string
+      try {
+        selectionText = await Promise.race([rl.question(ui.primary("select › ")), closed])
+      } catch {
+        rl.close()
+        store.close()
+        input.out("\nbye\n")
+        return 0
+      }
+      const selection = parseSelection(selectionText, entries)
+      if (selection.type === "cancel") continue
+      if (selection.type === "invalid") {
+        input.err(`${ui.error(`no model number: ${selection.input}`)}\n\n`)
+        continue
+      }
+      const entry = selection.entry
+      if (entry.needsKey && entry.keyVar && !entryReady(entry)) {
+        let keyValue: string
+        try {
+          input.err(`${ui.primary(`${entry.sourceLabel} needs an API key (${entry.keyVar})`)}\n`)
+          keyValue = (await Promise.race([rl.question("key › "), closed])).trim()
+        } catch {
+          rl.close()
+          store.close()
+          input.out("\nbye\n")
+          return 0
+        }
+        if (keyValue === "") {
+          input.err(`${ui.muted("cancelled - keyless sources still work")}\n\n`)
+          continue
+        }
+        saveKey(entry.keyVar, keyValue)
+        input.err(`${ui.muted(`key saved as your default for ${entry.sourceId}`)}\n`)
+      }
+      preferred = { sourceId: entry.sourceId, model: entry.model }
+      input.err(`${ui.muted(`selected: ${entry.sourceId} / ${entry.model}`)}\n\n`)
+      continue
+    }
 
     const history = toHistory(store.get(sessionId)?.messages ?? [])
     running = new AbortController()
@@ -143,33 +268,21 @@ export async function runInteractive(input: InteractiveInput): Promise<number> {
     // buffered and is delivered to the next prompt instead of being dropped.
     rl.pause()
     try {
-      const result = await runTurn({
+      await runTurn({
         manager,
         report,
         store,
         sessionId,
         input: line,
         history,
+        preferred,
         toolCtx: { workdir: input.workdir ?? process.cwd(), autoApprove: input.autoApprove },
         fetchImpl: input.fetchImpl,
         seenTrust,
         signal: running.signal,
-        onEvent: (event) => {
-          if (event.type === "text") input.out(event.delta)
-          else if (event.type === "source")
-            input.err(`\n${ui.muted(`~ ${event.sourceId} / ${event.model}`)}\n`)
-          else if (event.type === "tool-start") input.err(`${ui.primary(`$ ${event.name}`)}\n`)
-          else if (event.type === "tool-end") input.err(`${ui.muted(event.output.slice(0, 500))}\n`)
-          else if (event.type === "waiting")
-            input.err(`${ui.muted(`… waiting ${Math.ceil(event.waitMs / 1000)}s (${event.reason})`)}\n`)
-          else if (event.type === "warning") input.err(`${ui.error(`! ${event.message}`)}\n`)
-        },
+        onEvent: (event) => printer.handle(event),
       })
-      const summary = report.summary()
       input.out("\n\n")
-      input.err(
-        `${ui.muted(`done in ${result.steps} step(s) via ${result.sourcesUsed.join(", ") || "none"} · ${summary.totalRequests} request(s), ${summary.totalRefusals} refusal(s)`)}\n\n`,
-      )
     } catch (error) {
       input.out("\n\n")
       if (error instanceof Error && error.message === "aborted") input.err(`${ui.muted("stopped")}\n\n`)

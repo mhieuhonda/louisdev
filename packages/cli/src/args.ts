@@ -1,6 +1,6 @@
 export const VERSION = "0.0.1"
 
-export type Command = "chat" | "quota" | "chain" | "sessions" | "help" | "version"
+export type Command = "chat" | "quota" | "chain" | "sessions" | "models" | "help" | "version"
 
 export interface ParsedArgs {
   command: Command
@@ -17,6 +17,7 @@ const HELP = `louisdev ${VERSION} - free-max coding CLI
 Usage:
   louisdev                       chat right here in the terminal (interactive)
   louisdev chat <message>        one-shot: send a message, stream the answer
+  louisdev models                list models by provider (keyless first)
   louisdev quota                 live quota board
   louisdev chain                 source chain by priority
   louisdev sessions              saved sessions
@@ -33,6 +34,8 @@ Environment:
   LOUISDEV_CONFIG       config file path
   LOUISDEV_THEME        theme name
   OPENROUTER_API_KEY    key for the openrouter-free source
+  NVIDIA_API_KEY        key for the nvidia-nim source
+  OPENCODE_API_KEY      key for the opencode-zen source
 `
 
 export function helpText(): string {
@@ -60,7 +63,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
     const arg = argv[i] ?? ""
     if (!seenCommand && !arg.startsWith("-")) {
       seenCommand = true
-      if (arg === "chat" || arg === "quota" || arg === "chain" || arg === "sessions") command = arg
+      if (arg === "chat" || arg === "quota" || arg === "chain" || arg === "sessions" || arg === "models")
+        command = arg
       else if (arg === "help" || arg === "--help" || arg === "-h") command = "help"
       else if (arg === "version" || arg === "--version" || arg === "-v") command = "version"
       else throw new Error(`unknown command: ${arg}\n${HELP}`)

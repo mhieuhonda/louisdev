@@ -6,7 +6,8 @@ import { type LouisDevConfig, loadConfig, orderedSources, type Theme, type Trust
 import { QuotaManager, SqueezeReport } from "@louisdev/quota"
 import { loadTheme, renderLogo, renderQuotaBoard, style } from "@louisdev/tui"
 import { helpText, type ParsedArgs, parseArgs, VERSION } from "./args.ts"
-import { runInteractive } from "./interactive.ts"
+import { chatPrinter, runInteractive } from "./interactive.ts"
+import { entryReady, listModelEntries } from "./models.ts"
 
 export interface RunContext {
   out: (text: string) => void
@@ -88,6 +89,15 @@ export async function run(argv: string[], ctx: RunContext): Promise<number> {
     }
     return 0
   }
+  if (parsed.command === "models") {
+    const entries = await listModelEntries(config.chain).catch(() => [])
+    for (const entry of entries) {
+      const keyNote = entry.needsKey && !entryReady(entry) ? `  ${ui.error(`(needs ${entry.keyVar})`)}` : ""
+      ctx.out(`- ${ui.bold(entry.sourceLabel)} — ${entry.model}${keyNote}\n`)
+    }
+    if (entries.length === 0) ctx.out("no models listed\n")
+    return 0
+  }
 
   const message = parsed.positional.join(" ").trim()
   if (message === "") {
@@ -125,6 +135,7 @@ export async function run(argv: string[], ctx: RunContext): Promise<number> {
     const manager = new QuotaManager(config.chain)
     const report = new SqueezeReport()
     const seenTrust = new Set<TrustTier>()
+    const printer = chatPrinter(ctx.out, ctx.err, ui)
     const result = await runTurn({
       manager,
       report,
@@ -135,15 +146,7 @@ export async function run(argv: string[], ctx: RunContext): Promise<number> {
       toolCtx: { workdir: ctx.workdir ?? process.cwd(), autoApprove: parsed.autoApprove },
       fetchImpl: ctx.fetchImpl,
       seenTrust,
-      onEvent: (event) => {
-        if (event.type === "text") ctx.out(event.delta)
-        else if (event.type === "source") ctx.err(`\n${ui.muted(`~ ${event.sourceId} / ${event.model}`)}\n`)
-        else if (event.type === "tool-start") ctx.err(`${ui.primary(`$ ${event.name}`)}\n`)
-        else if (event.type === "tool-end") ctx.err(`${ui.muted(event.output.slice(0, 500))}\n`)
-        else if (event.type === "waiting")
-          ctx.err(`${ui.muted(`… waiting ${Math.ceil(event.waitMs / 1000)}s (${event.reason})`)}\n`)
-        else if (event.type === "warning") ctx.err(`${ui.error(`! ${event.message}`)}\n`)
-      },
+      onEvent: (event) => printer.handle(event),
     })
     ctx.out("\n")
     const summary = report.summary()

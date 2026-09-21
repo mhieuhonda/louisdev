@@ -66,6 +66,8 @@ export const SourceSchema = z.object({
   models: z.array(z.string().min(1)).default([]),
   /** Public model catalog for this source, if any. */
   catalogUrl: z.string().url().optional(),
+  /** Reasoning effort sent to reasoning models, e.g. "low" for speed. */
+  reasoningEffort: z.string().min(1).optional(),
   enabled: z.boolean().default(true),
   /** Lower runs first. */
   priority: z.number().int().min(0).max(1000).default(100),

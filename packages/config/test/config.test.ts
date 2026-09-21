@@ -8,7 +8,9 @@ import {
   defaultChain,
   loadConfig,
   orderedSources,
+  readKey,
   SourceSchema,
+  saveKey,
   sunsetFlowDark,
   sunsetFlowLight,
   ThemeSchema,
@@ -43,8 +45,15 @@ describe("source", () => {
 describe("chain", () => {
   test("default chain is valid with keyless source first", () => {
     const chain = defaultChain()
-    expect(ChainSchema.parse(chain).sources).toHaveLength(2)
-    expect(orderedSources(chain).map((s) => s.id)).toEqual(["pollinations-public", "openrouter-free"])
+    expect(ChainSchema.parse(chain).sources).toHaveLength(4)
+    expect(orderedSources(chain).map((s) => s.id)).toEqual([
+      "pollinations-public",
+      "openrouter-free",
+      "nvidia-nim",
+      "opencode-zen",
+    ])
+    // The keyless default always rotates first; zen never leads.
+    expect(orderedSources(chain)[0]?.auth.type).toBe("none")
   })
 
   test("ordering is stable by priority, disabled skipped", () => {
@@ -114,5 +123,24 @@ describe("config", () => {
   test("root schema has safe defaults", () => {
     const config = ConfigSchema.parse({})
     expect(config.catalog.ttlMinutes).toBe(5)
+  })
+})
+
+describe("keys", () => {
+  test("saveKey persists, readKey reads env first then store", () => {
+    const file = `${import.meta.dir}/fixture-keys.json`
+    process.env.LOUISDEV_KEYS_FILE = file
+    try {
+      expect(readKey({ name: "TEST_KEY_X" })).toBeUndefined()
+      saveKey("TEST_KEY_X", "secret-value")
+      expect(readKey({ name: "TEST_KEY_X" })).toBe("secret-value")
+      process.env.TEST_KEY_X = "env-wins"
+      expect(readKey({ name: "TEST_KEY_X" })).toBe("env-wins")
+      delete process.env.TEST_KEY_X
+      expect(readKey({ name: "TEST_KEY_MISSING" })).toBeUndefined()
+    } finally {
+      delete process.env.LOUISDEV_KEYS_FILE
+      unlink(file).catch(() => undefined)
+    }
   })
 })

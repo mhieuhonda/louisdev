@@ -49,7 +49,7 @@ describe("commands", () => {
   test("quota shows board", async () => {
     const c = ctx()
     expect(await run(["quota"], c)).toBe(0)
-    expect(c.outText()).toContain("2/2 sources ready")
+    expect(c.outText()).toContain("4/4 sources ready")
   })
 
   test("chat runs end to end on stubbed source", async () => {
@@ -91,6 +91,37 @@ describe("commands", () => {
     for (let i = 0; i < 100 && !c.errText().includes("1 request(s)"); i += 1) await Bun.sleep(20)
     script.write("/exit\n")
     expect(await done).toBe(true)
+  })
+
+  test("interactive /models lists keyless first, cancel works", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "louisdev-cache-"))
+    await Bun.write(
+      join(cacheDir, "openrouter-free-models.json"),
+      JSON.stringify({
+        data: [{ id: "test/free-model", pricing: { prompt: "0", completion: "0" }, context_length: 8000 }],
+      }),
+    )
+    process.env.LOUISDEV_CACHE_DIR = cacheDir
+    try {
+      const script = new PassThrough()
+      const c = ctx({ stdin: script as unknown as NodeJS.ReadStream })
+      script.write("/models\n")
+      const done = run(["chat"], c).then((code) => {
+        expect(code).toBe(0)
+        expect(c.outText()).toContain("Pollinations (keyless) — openai")
+        expect(c.outText()).toContain("test/free-model")
+        expect(c.outText()).toContain("bye")
+        return true
+      })
+      // Wait for the select prompt, cancel with an empty line, then leave.
+      for (let i = 0; i < 100 && !c.errText().includes("select › "); i += 1) await Bun.sleep(20)
+      script.write("\n")
+      await Bun.sleep(80)
+      script.write("/exit\n")
+      expect(await done).toBe(true)
+    } finally {
+      delete process.env.LOUISDEV_CACHE_DIR
+    }
   })
 
   test("unknown command exits 2", async () => {

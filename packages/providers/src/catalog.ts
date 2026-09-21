@@ -45,8 +45,45 @@ function num(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined
 }
 
-/** Flatten the catalog JSON into model entries. Pure - fully testable. */
+/**
+ * Flatten the catalog JSON into model entries. Pure - fully testable.
+ * Handles both catalog shapes: opencode api.json
+ * (`{provider: {models: {id: {cost, limit}}}}`) and OpenRouter
+ * (`{data: [{id, pricing: {prompt, completion}, context_length}]}`).
+ */
 export function parseCatalog(raw: Record<string, unknown>): CatalogModel[] {
+  const data = raw.data
+  if (Array.isArray(data)) return parseOpenRouter(data)
+  return parseOpencode(raw)
+}
+
+/** OpenRouter: pricing values are strings in dollars per token. */
+function parseOpenRouter(data: unknown[]): CatalogModel[] {
+  const out: CatalogModel[] = []
+  for (const entry of data) {
+    if (!isRecord(entry)) continue
+    if (typeof entry.id !== "string") continue
+    const pricing = isRecord(entry.pricing) ? entry.pricing : {}
+    // "0" must stay 0 (free), not fall through to -1: never use `||` here.
+    const input = Number(pricing.prompt)
+    const output = Number(pricing.completion)
+    out.push({
+      provider: typeof entry.name === "string" ? entry.name : (entry.id.split("/")[0] ?? entry.id),
+      id: entry.id,
+      cost: { input: Number.isFinite(input) ? input : -1, output: Number.isFinite(output) ? output : -1 },
+      contextLimit: num(entry.context_length),
+      outputLimit: num(
+        entry.top_provider && isRecord(entry.top_provider)
+          ? entry.top_provider.max_completion_tokens
+          : undefined,
+      ),
+    })
+  }
+  return out
+}
+
+/** opencode api.json: providers keyed by slug, models nested underneath. */
+function parseOpencode(raw: Record<string, unknown>): CatalogModel[] {
   const out: CatalogModel[] = []
   for (const [provider, info] of Object.entries(raw)) {
     if (!isRecord(info)) continue

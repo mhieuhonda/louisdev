@@ -13,6 +13,7 @@ import {
 
 export type AgentEvent =
   | { type: "text"; delta: string }
+  | { type: "thinking"; delta: string }
   | { type: "source"; sourceId: string; model: string }
   | { type: "tool-start"; name: string }
   | { type: "tool-end"; name: string; output: string }
@@ -30,6 +31,8 @@ export interface RunOptions {
   tools?: ToolDefinition[]
   /** Prior conversation turns (from the session store) sent as context. */
   history?: ChatMessage[]
+  /** Model picked via /models: pinned while its source is ok. */
+  preferred?: { sourceId: string; model: string }
   maxSteps?: number
   requestTimeoutMs?: number
   fetchImpl?: typeof fetch
@@ -96,7 +99,7 @@ export async function runTurn(options: RunOptions): Promise<RunResult> {
 
   for (;;) {
     if (options.signal?.aborted) throw new Error("aborted")
-    const source = options.manager.pick()
+    const source = options.manager.pick(undefined, options.preferred?.sourceId)
     if (!source) {
       const waitMs = options.manager.nextRecoveryMs()
       if (waitMs === undefined) throw new Error("all sources unavailable (auth parked) - fix keys and retry")
@@ -110,7 +113,7 @@ export async function runTurn(options: RunOptions): Promise<RunResult> {
       options.manager.refuse(source.id, { status: 401, headers: {}, body: "missing env key" })
       continue
     }
-    const model = source.models[0]
+    const model = options.preferred?.sourceId === source.id ? options.preferred.model : source.models[0]
     if (!model) throw new Error(`source ${source.id} has no models configured`)
     for (const notice of trustNotices(source, seenTrust)) {
       emit({ type: "warning", message: notice.message })
@@ -129,6 +132,7 @@ export async function runTurn(options: RunOptions): Promise<RunResult> {
         model,
         messages,
         tools: toolSpecs(),
+        reasoningEffort: source.reasoningEffort,
         signal,
         fetchImpl: options.fetchImpl,
       })
@@ -136,6 +140,8 @@ export async function runTurn(options: RunOptions): Promise<RunResult> {
         if (event.type === "text") {
           text += event.delta
           emit({ type: "text", delta: event.delta })
+        } else if (event.type === "thinking") {
+          emit({ type: "thinking", delta: event.delta })
         } else {
           toolcalls.push(event)
         }

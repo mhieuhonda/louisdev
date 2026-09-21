@@ -18,6 +18,7 @@
   "dependencies": {
     "@louisdev/agent": "workspace:*",
     "@louisdev/config": "workspace:*",
+    "@louisdev/providers": "workspace:*",
     "@louisdev/quota": "workspace:*",
     "@louisdev/tui": "workspace:*"
   }

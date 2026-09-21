@@ -2,10 +2,14 @@
 
 Free-max AI coding CLI. One agent, many free sources, zero setup.
 
-LouisDev routes every request through an ordered chain of public free model
-sources. When a source refuses (rate limit, exhausted quota), the quota
-manager cools it down, jumps to the next source, and auto-resumes when the
-fastest one recovers. Use free until the other side says no.
+LouisDev routes every request through an ordered chain of free model sources.
+The default source needs no account and no key. When a source refuses (rate
+limit, exhausted quota), the quota manager cools it down, jumps to the next
+source, and auto-resumes when the fastest one recovers. Use free until the
+other side says no.
+
+Built-in sources: Pollinations (keyless, default) - OpenRouter Free (free
+key) - NVIDIA NIM Free (free key, 40+ models) - OpenCode Zen (key, muse-spark).
 
 ## Vision
 
@@ -27,17 +31,27 @@ Then just chat, right in the terminal:
 louisdev
 ```
 
-You get a prompt (`you ›`), type a message, the answer streams live. The
-conversation keeps context across turns. Slash commands: `/new`, `/quota`,
-`/sessions`, `/help`, `/exit`. Ctrl+C stops the current answer, twice leaves.
+You get a prompt (`you ›`), type a message, the answer streams live - including
+the model's thinking (dimmed) while it reasons, so there is no blank wait. The
+conversation keeps context across turns.
+
+Slash commands:
+
+- `/models` - pick a model. Keyless providers first; key-required providers
+  (OpenRouter, NVIDIA NIM, OpenCode Zen) prompt for an API key once and store
+  it as your default for that provider.
+- `/thinking` - toggle the thinking stream on/off.
+- `/new` - fresh session. `/quota` - quota board. `/sessions` - saved sessions.
+- `/exit` - leave. Ctrl+C stops the current answer, twice leaves the chat.
 
 One-shot mode for scripts:
 
 ```sh
 ld chat "explain this repo in one line"
-ld quota          # live quota board
-ld chain          # source chain by priority
-ld sessions       # saved sessions
+ld models          # list models by provider (keyless first)
+ld quota           # live quota board
+ld chain           # source chain by priority
+ld sessions        # saved sessions
 ```
 
 Tools (`read`, `edit`, `bash`) need `--auto-approve` to run without asking:
